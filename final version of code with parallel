@@ -1,0 +1,90 @@
+#include <iostream>
+#include <fstream>
+#include <string>
+#include <filesystem>
+#include <chrono>
+#include <omp.h>
+
+namespace fs = std::filesystem;
+
+// Recursive function to check if a file is empty
+bool isFileEmpty(const std::string& filepath) {
+    std::ifstream file(filepath);
+    return file.peek() == std::ifstream::traits_type::eof(); 
+}
+
+// Function to search for a keyword within a file
+bool searchInFile(const std::string& filepath, const std::string& keyword) {
+    if (isFileEmpty(filepath)) {
+   
+            std::cout << "File is empty: " << filepath << std::endl;
+        
+        return false;
+    }
+
+    std::ifstream file(filepath);
+    std::string line;
+    size_t lineNumber = 0;
+    bool found = false;
+
+    // Iterate through each line in the file
+    while (std::getline(file, line)) {
+        ++lineNumber; 
+        if (line.find(keyword) != std::string::npos) {
+          
+                std::cout << "Keyword found in file: " << filepath
+                          << " at line: " << lineNumber << std::endl;
+            
+            found = true;
+        }
+    }
+    return found;
+}
+
+int main() {
+    std::string directory;
+    std::cout << "Enter the directory to search in: ";
+    std::cin >> directory;
+
+    std::string keyword;
+    std::cout << "Enter the keyword to search: ";
+    std::cin >> keyword;
+
+    // Track search duration
+    auto start = std::chrono::high_resolution_clock::now();
+    size_t filesWithKeyword = 0;
+	
+
+
+    // outer loop 
+		#pragma omp parallel
+		{
+				#pragma omp single
+				{
+					#pragma omp prallel for schedule (static, 8)
+					{
+					for (const auto& entry : fs::directory_iterator(directory)) {
+						if (fs::is_regular_file(entry)) {
+							const std::string filepath = entry.path().string();
+							#pragma omp task shared(filesWithKeyword)
+							{
+								if (searchInFile(filepath, keyword)) {
+									#pragma omp atomic
+									++filesWithKeyword;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	
+
+    // Calculate and display search duration
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Total files with keyword: " << filesWithKeyword << std::endl;
+    std::cout << "Total time taken: " << duration.count() << " seconds" << std::endl;
+
+    return 0;
+}
